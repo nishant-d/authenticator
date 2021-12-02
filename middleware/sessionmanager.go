@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	jwt2 "github.com/devtron-labs/authenticator/jwt"
 	"github.com/devtron-labs/authenticator/oidc"
-	jwt "github.com/golang-jwt/jwt/v4"
+
+	"github.com/dgrijalva/jwt-go/v4"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"net"
@@ -70,34 +72,41 @@ func (mgr *SessionManager) Create(subject string, secondsBeforeExpiry int64, id 
 	// you would like it to contain.
 	now := time.Now().UTC()
 	claims := jwt.StandardClaims{
-		IssuedAt:  now.Unix(),
+		IssuedAt:  jwt.At(now),
 		Issuer:    SessionManagerClaimsIssuer,
-		NotBefore: now.Unix(),
+		NotBefore: jwt.At(now),
 		Subject:   subject,
-		Id:        id,
+		ID:        id,
 	}
 	if secondsBeforeExpiry > 0 {
 		expires := now.Add(time.Duration(secondsBeforeExpiry) * time.Second)
-		claims.ExpiresAt = expires.Unix()
+		claims.ExpiresAt = jwt.At(expires)
 	}
 
 	return mgr.signClaims(claims)
 }
 
+type standardClaims struct {
+	Audience  jwt.ClaimStrings `json:"aud,omitempty"`
+	ExpiresAt int64            `json:"exp,omitempty"`
+	ID        string           `json:"jti,omitempty"`
+	IssuedAt  int64            `json:"iat,omitempty"`
+	Issuer    string           `json:"iss,omitempty"`
+	NotBefore int64            `json:"nbf,omitempty"`
+	Subject   string           `json:"sub,omitempty"`
+}
+
+func unixTimeOrZero(t *jwt.Time) int64 {
+	if t == nil {
+		return 0
+	}
+	return t.Unix()
+}
+
 func (mgr *SessionManager) signClaims(claims jwt.Claims) (string, error) {
 	// log.Infof("Issuing claims: %v", claims)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(mgr.settings.OIDCConfig.ClientSecret))
-	return tokenString, err
-	/*settings, err := mgr.settingsMgr.GetSettings()
-	if err != nil {
-		return "", err
-	}*/
-	// workaround for https://github.com/argoproj/argo-cd/issues/5217
-	// According to https://tools.ietf.org/html/rfc7519#section-4.1.6 "iat" and other time fields must contain
-	// number of seconds from 1970-01-01T00:00:00Z UTC until the specified UTC date/time.
-	// The https://github.com/dgrijalva/jwt-go marshals time as non integer.
-	/*	return token.SignedString("", jwt.WithMarshaller(func(ctx jwt.CodingContext, v interface{}) ([]byte, error) {
+	tokenString, err := token.SignedString(mgr.settings.OIDCConfig.ClientSecret, jwt.WithMarshaller(func(ctx jwt.CodingContext, v interface{}) ([]byte, error) {
 		if std, ok := v.(jwt.StandardClaims); ok {
 			return json.Marshal(standardClaims{
 				Audience:  std.Audience,
@@ -110,7 +119,8 @@ func (mgr *SessionManager) signClaims(claims jwt.Claims) (string, error) {
 			})
 		}
 		return json.Marshal(v)
-	}))*/
+	}))
+	return tokenString, err
 }
 
 /*func (mgr *SessionManager) signClaims(claims jwt.Claims) (string, error) {
@@ -127,17 +137,21 @@ func (mgr *SessionManager) Parse(tokenString string) (jwt.Claims, error) {
 	// to the callback, providing flexibility.
 	var claims jwt.MapClaims
 	settings := mgr.settings
-
 	token, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
 		// Don't forget to validate the alg is what you expect:
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-		return []byte(settings.OIDCConfig.ClientSecret), nil
+		return settings.OIDCConfig.ClientSecret, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	//FIXME nisaht
+	/*	ssuedAt, err := jwt2.IssuedAtTime(claims)
+		if err != nil {
+			return nil, err
+		}*/
 	/*
 		issuedAt := time.Unix(int64(claims["iat"].(float64)), 0)
 		if issuedAt.Before(settings.AdminPasswordMtime) {
@@ -150,9 +164,9 @@ func (mgr *SessionManager) Parse(tokenString string) (jwt.Claims, error) {
 // We choose how to verify based on the issuer.
 func (mgr *SessionManager) VerifyToken(tokenString string) (jwt.Claims, error) {
 	parser := &jwt.Parser{
-		SkipClaimsValidation: true,
+		ValidationHelper: jwt.NewValidationHelper(jwt.WithoutClaimsValidation(), jwt.WithoutAudienceValidation()),
 	}
-	var claims jwt.RegisteredClaims
+	var claims jwt.StandardClaims
 	_, _, err := parser.ParseUnverified(tokenString, &claims)
 	if err != nil {
 		return nil, err

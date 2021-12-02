@@ -2,9 +2,10 @@ package jwt
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-
-	jwt "github.com/golang-jwt/jwt/v4"
+	"github.com/dgrijalva/jwt-go/v4"
+	"time"
 )
 
 // MapClaims converts a jwt.Claims to a MapClaims
@@ -96,4 +97,31 @@ func IsMember(claims jwt.Claims, groups []string) bool {
 		}
 	}
 	return false
+}
+// IssuedAtTime returns the issued at as a time.Time
+func IssuedAtTime(m jwt.MapClaims) (time.Time, error) {
+	iat, err := IssuedAt(m)
+	return time.Unix(iat, 0), err
+}
+
+// IssuedAt returns the issued at as an int64
+func IssuedAt(m jwt.MapClaims) (int64, error) {
+	return numField(m, "iat")
+}
+
+func numField(m jwt.MapClaims, key string) (int64, error) {
+	field, ok := m[key]
+	if !ok {
+		return 0, errors.New("token does not have iat claim")
+	}
+	switch val := field.(type) {
+	case float64:
+		return int64(val), nil
+	case json.Number:
+		return val.Int64()
+	case int64:
+		return val, nil
+	default:
+		return 0, fmt.Errorf("%s '%v' is not a number", key, val)
+	}
 }

@@ -5,8 +5,8 @@ go 1.16
 require (
 	github.com/caarlos0/env/v6 v6.7.2
 	github.com/coreos/go-oidc v2.2.1+incompatible
+	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v4 v4.1.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect

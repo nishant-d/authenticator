@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	jwt2 "github.com/devtron-labs/authenticator/jwt"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/dgrijalva/jwt-go/v4"
 	"html"
 	"html/template"
 	"math/rand"
